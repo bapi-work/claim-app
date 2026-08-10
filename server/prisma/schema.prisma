@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  FINANCE
+  HR
+  ADMIN
+}
+
+enum ClaimType {
+  TRAVEL
+  MEDICAL
+  SUBSCRIPTION
+  MILEAGE
+  OTHER
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(EMPLOYEE)
+  department   String?
+  homeCurrency String   @default("USD")
+  managerId    String?
+  manager      User?    @relation("ManagerReports", fields: [managerId], references: [id])
+  reports      User[]   @relation("ManagerReports")
+
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  claims                 Claim[]        @relation("SubmittedClaims")
+  claimsAsSelectedManager Claim[]       @relation("ClaimSelectedManager")
+  assignedApprovalSteps  ApprovalStep[] @relation("AssignedApproverSteps")
+  decidedApprovalSteps   ApprovalStep[] @relation("DecidedApproverSteps")
+  auditLogs              AuditLog[]
+}
+
+model Claim {
+  id                String      @id @default(uuid())
+  submitterId       String
+  submitter         User        @relation("SubmittedClaims", fields: [submitterId], references: [id])
+  selectedManagerId String?
+  selectedManager   User?       @relation("ClaimSelectedManager", fields: [selectedManagerId], references: [id])
+  type              ClaimType
+  title             String
+  description       String?
+  amount            Decimal     @db.Decimal(12, 2)
+  currency          String      @default("USD")
+  status            ClaimStatus @default(DRAFT)
+  submittedAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  attachments   Attachment[]
+  approvalSteps ApprovalStep[]
+  auditLogs     AuditLog[]
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  claimId     String
+  claim       Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  filename    String
+  storagePath String
+  uploadedAt  DateTime @default(now())
+}
+
+// A claim moves through an ordered chain of steps (MANAGER -> FINANCE -> HR).
+// The MANAGER step has a specific approverId (chosen by the submitter). The
+// FINANCE/HR steps are role-based queues (approverId is null until someone
+// with that role acts, recorded in decidedById).
+model ApprovalStep {
+  id           String         @id @default(uuid())
+  claimId      String
+  claim        Claim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  order        Int
+  approverRole Role
+  approverId   String?
+  approver     User?          @relation("AssignedApproverSteps", fields: [approverId], references: [id])
+  decidedById  String?
+  decidedBy    User?          @relation("DecidedApproverSteps", fields: [decidedById], references: [id])
+  status       ApprovalStatus @default(PENDING)
+  comment      String?
+  decidedAt    DateTime?
+  createdAt    DateTime       @default(now())
+}
+
+model AppSettings {
+  id              String   @id @default("singleton")
+  appName         String   @default("Claim App")
+  logoText        String   @default("CA")
+  logoUrl         String?
+  primaryColor    String   @default("#4f46e5")
+  defaultCurrency String   @default("USD")
+  headerLinks     Json     @default("[]")
+  footerLinks     Json     @default("[]")
+  footerText      String?
+  updatedAt       DateTime @updatedAt
+}
+
+model EmailSettings {
+  id           String   @id @default("singleton")
+  enabled      Boolean  @default(false)
+  smtpHost     String?
+  smtpPort     Int      @default(587)
+  smtpSecure   Boolean  @default(false)
+  smtpUser     String?
+  smtpPassword String?
+  fromName     String   @default("Claim App")
+  fromAddress  String?
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  claimId   String?
+  claim     Claim?   @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+}
