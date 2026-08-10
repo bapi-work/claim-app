@@ -1,24 +1,8 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import crypto from "crypto";
 
-const uploadsDir = path.join(__dirname, "..", "..", "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const unique = crypto.randomUUID();
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
-
+// Buffered in memory, then handed to the configured storage adapter (local disk or S3-compatible
+// cloud storage) by the route handler — see src/storage/index.ts.
 export const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
-
-export const uploadsDirPath = uploadsDir;

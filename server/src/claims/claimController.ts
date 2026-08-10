@@ -8,6 +8,7 @@ import { checkClaimPolicy } from "./policyCheck";
 import { convert } from "../lib/currency";
 import { sendMail } from "../lib/mailer";
 import { claimSummary } from "../lib/notify";
+import { storage } from "../storage";
 
 function withHomeCurrencyAmount<T extends { amount: unknown; currency: string; submitter: { homeCurrency: string } }>(
   claim: T
@@ -146,7 +147,11 @@ claimsRouter.get("/:id", async (req: AuthedRequest, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  res.json(withHomeCurrencyAmount(claim));
+  const attachments = await Promise.all(
+    claim.attachments.map(async (a) => ({ ...a, url: await storage.resolveUrl(a.storagePath) }))
+  );
+
+  res.json({ ...withHomeCurrencyAmount(claim), attachments });
 });
 
 claimsRouter.post("/:id/submit", async (req: AuthedRequest, res) => {
@@ -201,13 +206,20 @@ claimsRouter.post("/:id/attachments", upload.single("file"), async (req: AuthedR
   if (claim.submitterId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+  const key = await storage.save({
+    buffer: req.file.buffer,
+    folder: "attachments",
+    originalFilename: req.file.originalname,
+    mimetype: req.file.mimetype,
+  });
+
   const attachment = await prisma.attachment.create({
     data: {
       claimId: claim.id,
       filename: req.file.originalname,
-      storagePath: req.file.filename,
+      storagePath: key,
     },
   });
   await logAudit({ actorId: req.user!.id, action: "ATTACHMENT_UPLOADED", claimId: claim.id });
-  res.status(201).json(attachment);
+  res.status(201).json({ ...attachment, url: await storage.resolveUrl(key) });
 });

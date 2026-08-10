@@ -115,7 +115,7 @@ model AppSettings {
   id              String   @id @default("singleton")
   appName         String   @default("Claim App")
   logoText        String   @default("CA")
-  logoUrl         String?
+  logoKey         String?
   primaryColor    String   @default("#4f46e5")
   defaultCurrency String   @default("USD")
   headerLinks     Json     @default("[]")

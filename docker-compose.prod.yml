@@ -1,0 +1,57 @@
+# Fixed project name so this stack never collides with docker-compose.yml (the local dev
+# stack) when both are run from the same directory — they'd otherwise share container names
+# and, worse, the same named volumes (i.e. the same Postgres data).
+name: claimapp-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-claimapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-claimapp}
+    volumes:
+      - claimapp_pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-claimapp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-claimapp}
+      PORT: 4000
+    depends_on:
+      - db
+    volumes:
+      # Only used when STORAGE_DRIVER=local. Safe to omit if STORAGE_DRIVER=s3.
+      - claimapp_uploads:/app/uploads
+    networks:
+      - internal
+      - proxy
+
+  client:
+    build:
+      context: ./client
+    restart: unless-stopped
+    depends_on:
+      - server
+    networks:
+      - proxy
+
+volumes:
+  claimapp_pgdata:
+  claimapp_uploads:
+
+networks:
+  internal:
+  # External network shared with Nginx Proxy Manager (or any reverse proxy) so it can reach
+  # the `client` and `server` containers by name. Create it once with:
+  #   docker network create proxy
+  # and make sure your Nginx Proxy Manager stack is attached to the same network.
+  proxy:
+    external: true

@@ -1,12 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
-import path from "path";
-import fs from "fs";
 import { prisma } from "../lib/prisma";
 import { logAudit } from "../lib/audit";
 import { requireAuth, requireRole, AuthedRequest } from "../auth/authMiddleware";
 import { isSupportedCurrency } from "../lib/currency";
 import { logoUpload } from "./logoUpload";
+import { storage } from "../storage";
 
 export const brandingRouter = Router();
 
@@ -18,12 +17,19 @@ async function getOrCreateBranding() {
   });
 }
 
+async function withLogoUrl(branding: Awaited<ReturnType<typeof getOrCreateBranding>>) {
+  return {
+    ...branding,
+    logoUrl: branding.logoKey ? await storage.resolveUrl(branding.logoKey) : null,
+  };
+}
+
 const linkSchema = z.object({
   label: z.string().min(1).max(40),
   url: z.string().min(1).max(500),
 });
 
-function publicShape(branding: Awaited<ReturnType<typeof getOrCreateBranding>>) {
+function publicShape(branding: Awaited<ReturnType<typeof withLogoUrl>>) {
   return {
     appName: branding.appName,
     logoText: branding.logoText,
@@ -39,13 +45,13 @@ function publicShape(branding: Awaited<ReturnType<typeof getOrCreateBranding>>) 
 // Public (but still requires a logged-in session) so the login/app shell can render branding.
 brandingRouter.get("/", requireAuth, async (_req, res) => {
   const branding = await getOrCreateBranding();
-  res.json(branding);
+  res.json(await withLogoUrl(branding));
 });
 
 // Unauthenticated variant for the login screen, before a token exists.
 brandingRouter.get("/public", async (_req, res) => {
   const branding = await getOrCreateBranding();
-  res.json(publicShape(branding));
+  res.json(publicShape(await withLogoUrl(branding)));
 });
 
 const updateSchema = z.object({
@@ -76,7 +82,7 @@ brandingRouter.put("/", requireAuth, requireRole("ADMIN"), async (req: AuthedReq
 
   await logAudit({ actorId: req.user!.id, action: "BRANDING_UPDATED", details: { appName: parsed.data.appName } });
 
-  res.json(branding);
+  res.json(await withLogoUrl(branding));
 });
 
 brandingRouter.post(
@@ -93,29 +99,32 @@ brandingRouter.post(
     if (!req.file) return res.status(400).json({ error: "No logo file uploaded" });
 
     const existing = await getOrCreateBranding();
-    if (existing.logoUrl) {
-      const oldPath = path.join(__dirname, "..", "..", "uploads", "branding", path.basename(existing.logoUrl));
-      fs.unlink(oldPath, () => {});
+    if (existing.logoKey) {
+      await storage.delete(existing.logoKey);
     }
 
-    const logoUrl = `/uploads/branding/${req.file.filename}`;
-    const branding = await prisma.appSettings.update({ where: { id: "singleton" }, data: { logoUrl } });
+    const logoKey = await storage.save({
+      buffer: req.file.buffer,
+      folder: "branding",
+      originalFilename: req.file.originalname,
+      mimetype: req.file.mimetype,
+    });
+    const branding = await prisma.appSettings.update({ where: { id: "singleton" }, data: { logoKey } });
 
     await logAudit({ actorId: req.user!.id, action: "BRANDING_LOGO_UPLOADED" });
 
-    res.json(branding);
+    res.json(await withLogoUrl(branding));
   }
 );
 
 brandingRouter.delete("/logo", requireAuth, requireRole("ADMIN"), async (req: AuthedRequest, res) => {
   const existing = await getOrCreateBranding();
-  if (existing.logoUrl) {
-    const oldPath = path.join(__dirname, "..", "..", "uploads", "branding", path.basename(existing.logoUrl));
-    fs.unlink(oldPath, () => {});
+  if (existing.logoKey) {
+    await storage.delete(existing.logoKey);
   }
 
-  const branding = await prisma.appSettings.update({ where: { id: "singleton" }, data: { logoUrl: null } });
+  const branding = await prisma.appSettings.update({ where: { id: "singleton" }, data: { logoKey: null } });
   await logAudit({ actorId: req.user!.id, action: "BRANDING_LOGO_REMOVED" });
 
-  res.json(branding);
+  res.json(await withLogoUrl(branding));
 });

@@ -215,7 +215,7 @@ export function ClaimDetail() {
             {claim.attachments.map((a) => (
               <li key={a.id} className="file-item">
                 <span className="file-item-icon">{fileIcon(a.filename)}</span>
-                <a className="file-item-name" href={`/uploads/${a.storagePath}`} target="_blank" rel="noreferrer">
+                <a className="file-item-name" href={a.url ?? "#"} target="_blank" rel="noreferrer">
                   {a.filename}
                 </a>
                 <span className="file-item-meta">{new Date(a.uploadedAt).toLocaleDateString()}</span>

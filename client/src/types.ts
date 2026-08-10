@@ -44,6 +44,7 @@ export interface Attachment {
   claimId: string;
   filename: string;
   storagePath: string;
+  url?: string;
   uploadedAt: string;
 }
 
