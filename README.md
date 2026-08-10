@@ -55,13 +55,17 @@ All passwords: `password123`
 - finance@example.com (FINANCE)
 
 ## Flow to try
-1. Log in as `employee@example.com`, create a claim, attach a bill/invoice, submit it.
-2. Log in as `manager@example.com`, open Approvals — try rejecting without a comment (blocked), then reject with a reason or approve.
-3. Log in as `admin@example.com` (or finance/HR), view All Claims, export CSV, check the audit log.
-4. As `admin@example.com`: import users via CSV (Users page), customize Branding, and configure Email Settings (SMTP) — use "Send test email" to verify.
-5. From the profile menu (top-right avatar), any user can change their password or enable two-factor authentication (scan the QR code with an authenticator app).
+1. Log in as `employee@example.com`, create a claim, pick an approving manager, attach a bill/invoice, submit it.
+2. Log in as `manager@example.com`, open Approvals, approve it — it moves to the Finance queue.
+3. Log in as `finance@example.com`, approve it — it moves to the HR queue.
+4. Log in as `hr@example.com`, approve it — the claim is now `PAID` (disbursed). Try rejecting without a comment at any stage (blocked).
+5. Log in as `admin@example.com` (or finance/HR), view All Claims, export CSV, check the audit log — each shows the full Manager → Finance → HR trail.
+6. As `admin@example.com`: import users via CSV (Users page), customize Branding (upload a logo, add header/footer links), and configure Email Settings (SMTP) — use "Send test email" to verify.
+7. From the profile menu (top-right avatar), any user can change their password or enable two-factor authentication (scan the QR code with an authenticator app).
 
 ## Notes
 - Currency conversion uses a fixed rate table (`server/src/lib/currency.ts`), not a live FX API — swap that module for a real provider later without touching callers.
 - Email sending fails gracefully (logged, not thrown) if SMTP isn't configured or reachable, so it never blocks a claim action.
 - HR can manage everyday users but cannot grant the Admin or HR role — only an Admin can do that.
+- The Finance and HR approval steps are role-based queues (any user with that role can act), not assigned to a specific person; the Manager step is a specific person the employee chose at submission time. An Admin can override and act at any stage.
+- Uploaded branding logos are stored on local disk under `server/uploads/branding/`.

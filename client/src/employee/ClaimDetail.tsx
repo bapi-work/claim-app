@@ -170,7 +170,7 @@ export function ClaimDetail() {
         )}
         {claim.selectedManager && (
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            Approving manager: {claim.selectedManager.name}
+            First approver: {claim.selectedManager.name}
           </p>
         )}
         {isOwner && isDraft && (

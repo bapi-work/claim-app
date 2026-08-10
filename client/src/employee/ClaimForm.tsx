@@ -8,11 +8,12 @@ import { FileDropzone } from "../components/FileDropzone";
 
 const CLAIM_TYPES: ClaimType[] = ["TRAVEL", "MEDICAL", "SUBSCRIPTION", "MILEAGE", "OTHER"];
 
-interface ManagerOption {
+interface ApproverOption {
   id: string;
   name: string;
   email: string;
   department?: string | null;
+  role: string;
 }
 
 export function ClaimForm() {
@@ -25,7 +26,7 @@ export function ClaimForm() {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.homeCurrency ?? branding.defaultCurrency);
   const [currencies, setCurrencies] = useState<string[]>([]);
-  const [managers, setManagers] = useState<ManagerOption[]>([]);
+  const [approvers, setApprovers] = useState<ApproverOption[]>([]);
   const [selectedManagerId, setSelectedManagerId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +35,13 @@ export function ClaimForm() {
 
   useEffect(() => {
     api.get<{ currencies: string[] }>("/currency").then((res) => setCurrencies(res.currencies));
-    api.get<ManagerOption[]>("/directory/managers").then(setManagers);
+    api.get<ApproverOption[]>("/directory/managers").then(setApprovers);
   }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!selectedManagerId) {
-      setError("Please select a manager to approve this claim.");
+      setError("Please select someone to approve this claim.");
       return;
     }
     setError(null);
@@ -145,24 +146,24 @@ export function ClaimForm() {
           </div>
 
           <div className="field">
-            <label className="label">Approving manager</label>
+            <label className="label">Approver</label>
             <select
               className="select"
               value={selectedManagerId}
               onChange={(e) => setSelectedManagerId(e.target.value)}
               required
             >
-              <option value="">Select a manager...</option>
-              {managers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                  {m.department ? ` (${m.department})` : ""}
+              <option value="">Select who should approve this...</option>
+              {approvers.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} — {a.role}
+                  {a.department ? ` (${a.department})` : ""}
                 </option>
               ))}
             </select>
             <span className="dropzone-hint">
-              After your manager approves, this claim routes to Finance, then HR for final approval and
-              disbursement.
+              Pick anyone to review it first. After they approve, this claim routes to Finance, then HR for final
+              approval and disbursement.
             </span>
           </div>
 

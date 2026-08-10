@@ -30,13 +30,22 @@ const createSchema = z.object({
   description: z.string().optional(),
   amount: z.number().positive(),
   currency: z.string().default("USD"),
-  selectedManagerId: z.string().uuid({ message: "Please select a manager to approve this claim" }),
+  selectedManagerId: z.string().uuid({ message: "Please select someone to approve this claim" }),
 });
 
-async function assertIsManager(managerId: string, res: import("express").Response): Promise<boolean> {
-  const manager = await prisma.user.findUnique({ where: { id: managerId } });
-  if (!manager || manager.role !== "MANAGER") {
-    res.status(400).json({ error: "Selected approver must be a user with the Manager role" });
+// Approver selection isn't restricted by role — any other user in the system can be picked.
+async function assertValidApprover(
+  approverId: string,
+  submitterId: string,
+  res: import("express").Response
+): Promise<boolean> {
+  if (approverId === submitterId) {
+    res.status(400).json({ error: "You cannot select yourself as the approver" });
+    return false;
+  }
+  const approver = await prisma.user.findUnique({ where: { id: approverId } });
+  if (!approver) {
+    res.status(400).json({ error: "Selected approver was not found" });
     return false;
   }
   return true;
@@ -46,7 +55,7 @@ claimsRouter.post("/", async (req: AuthedRequest, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  if (!(await assertIsManager(parsed.data.selectedManagerId, res))) return;
+  if (!(await assertValidApprover(parsed.data.selectedManagerId, req.user!.id, res))) return;
 
   const claim = await prisma.claim.create({
     data: { ...parsed.data, submitterId: req.user!.id, status: "DRAFT" },
@@ -66,7 +75,11 @@ claimsRouter.patch("/:id", async (req: AuthedRequest, res) => {
   if (claim.submitterId !== req.user!.id) return res.status(403).json({ error: "Forbidden" });
   if (claim.status !== "DRAFT") return res.status(409).json({ error: "Only draft claims can be edited" });
 
-  if (parsed.data.selectedManagerId && !(await assertIsManager(parsed.data.selectedManagerId, res))) return;
+  if (
+    parsed.data.selectedManagerId &&
+    !(await assertValidApprover(parsed.data.selectedManagerId, req.user!.id, res))
+  )
+    return;
 
   const updated = await prisma.claim.update({ where: { id: claim.id }, data: parsed.data });
   await logAudit({ actorId: req.user!.id, action: "CLAIM_UPDATED", claimId: claim.id });
