@@ -60,6 +60,7 @@ Edit `.env`:
 |---|---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Yes (if using the bundled `db` service) | `POSTGRES_PASSWORD` has no default — the stack refuses to start without it |
 | `JWT_SECRET` / `JWT_REFRESH_SECRET` | Yes | Generate with `openssl rand -base64 48`. Rotating either invalidates all sessions and any in-flight 2FA login challenges |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Recommended | Bootstraps the first admin account automatically on container start. See step 7 below |
 | `STORAGE_DRIVER` | Yes | `local` (default) or `s3`. See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) for `S3_*` variables |
 
 If you're pointing at an external/managed Postgres instead of the bundled `db` service, remove
@@ -110,18 +111,36 @@ Configure your reverse proxy to forward your domain to that container on port 80
 ## 7. Create your first admin user
 
 The seed script (`npm run seed`) is meant for local development — it creates known
-`password123` accounts, which you do **not** want in production. Instead, register the first
-account through the running app (it defaults to the `EMPLOYEE` role), then promote it to admin
-directly in the database:
+`password123` accounts, which you do **not** want in production.
+
+Instead, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`) in `.env` before
+first starting the stack. The `server` container bootstraps that account as `ADMIN` automatically
+on every start — including the very first one — so it's ready to log into as soon as
+`docker compose -f docker-compose.prod.yml up -d --build` finishes. Check
+`docker compose -f docker-compose.prod.yml logs server` for a line like
+`Bootstrap: created ADMIN account admin@example.com.` to confirm it ran.
+
+This is idempotent and safe to leave in `.env` indefinitely: it only creates the account once,
+and won't overwrite the password if you change it later through the app. If the account already
+exists with a different role, it's promoted to `ADMIN` instead of recreated.
+
+From there, use the Users page (as the admin you just logged in as) to create everyone else
+properly instead of writing more accounts by hand.
+
+**If you forgot to set `ADMIN_EMAIL`/`ADMIN_PASSWORD` before first deploying**, add them to
+`.env` and re-run `docker compose -f docker-compose.prod.yml up -d` — the bootstrap runs on every
+container start, so this fixes it without a rebuild. Alternatively, register an account through
+the running app (defaults to `EMPLOYEE`) and promote it manually:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec db \
-  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  psql -U claimapp -d claimapp \
   -c "UPDATE \"User\" SET role = 'ADMIN' WHERE email = 'you@example.com';"
 ```
-
-Log back in (or refresh) and you'll see the Admin nav items. From there, use the Users page to
-create everyone else properly instead of writing further SQL.
+(substitute your actual `POSTGRES_USER`/`POSTGRES_DB` if you changed them from the `claimapp`
+defaults — `$POSTGRES_USER`/`$POSTGRES_DB` won't expand correctly here since those live in
+`.env`, which Compose reads but your shell doesn't, unless you first run
+`set -a; source .env; set +a`)
 
 ## Environment variable reference
 

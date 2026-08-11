@@ -32,6 +32,7 @@ COPY prisma ./prisma
 RUN mkdir -p uploads
 EXPOSE 4000
 
-# Applies pending migrations, then starts the API. Safe to run on every container start —
-# `prisma migrate deploy` is a no-op when the database is already up to date.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+# Applies pending migrations, bootstraps the admin account from ADMIN_EMAIL/ADMIN_PASSWORD
+# (no-op if unset, or if that account already exists as ADMIN), then starts the API.
+# Safe to run on every container start.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/scripts/bootstrapAdmin.js && node dist/index.js"]
